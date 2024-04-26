@@ -20,7 +20,6 @@ apt install socat netfilter-persistent -y
 apt install vnstat lsof fail2ban -y
 apt install curl sudo -y
 apt install screen cron screenfetch -y
-mkdir /backup >> /dev/null 2>&1
 mkdir /user >> /dev/null 2>&1
 mkdir /tmp >> /dev/null 2>&1
 apt install resolvconf network-manager dnsutils bind9 -y
@@ -48,33 +47,23 @@ rm /usr/local/etc/xray/city >> /dev/null 2>&1
 rm /usr/local/etc/xray/org >> /dev/null 2>&1
 rm /usr/local/etc/xray/timezone >> /dev/null 2>&1
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" - install --beta
-cp /usr/local/bin/xray /backup/xray.official.backup
 curl -s ipinfo.io/city >> /usr/local/etc/xray/city
 curl -s ipinfo.io/org | cut -d " " -f 2-10 >> /usr/local/etc/xray/org
 curl -s ipinfo.io/timezone >> /usr/local/etc/xray/timezone
-clear
-echo -e "${GB}[ INFO ]${NC} ${YB}Downloading Xray-core mod${NC}"
-sleep 0.5
-wget -q -O /backup/xray.mod.backup "https://github.com/dharak36/Xray-core/releases/download/v1.0.0/xray.linux.64bit"
-echo -e "${GB}[ INFO ]${NC} ${YB}Download Xray-core done${NC}"
-sleep 1
-cd
-clear
 curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash
 sudo apt-get install speedtest
 clear
 ln -fs /usr/share/zoneinfo/Asia/Jakarta /etc/localtime
 apt install nginx -y
-rm /var/www/html/*.html
-rm /etc/nginx/sites-enabled/default
-rm /etc/nginx/sites-available/default
-mkdir -p /var/www/html/vmess
-mkdir -p /var/www/html/vless
-mkdir -p /var/www/html/trojan
-mkdir -p /var/www/html/shadowsocks
-mkdir -p /var/www/html/shadowsocks2022
-mkdir -p /var/www/html/socks5
-mkdir -p /var/www/html/allxray
+rm -rf /var/www/html/* >> /dev/null 2>&1
+rm /etc/nginx/sites-enabled/default >> /dev/null 2>&1
+rm /etc/nginx/sites-available/default >> /dev/null 2>&1
+mkdir -p /var/www/html/vmess >> /dev/null 2>&1
+mkdir -p /var/www/html/vless >> /dev/null 2>&1
+mkdir -p /var/www/html/trojan >> /dev/null 2>&1
+mkdir -p /var/www/html/ss >> /dev/null 2>&1
+mkdir -p /var/www/html/ss2022 >> /dev/null 2>&1
+mkdir -p /var/www/html/allxray >> /dev/null 2>&1
 systemctl restart nginx
 clear
 touch /usr/local/etc/xray/domain
@@ -93,172 +82,630 @@ systemctl stop xray
 domain=$(cat /usr/local/etc/xray/domain)
 curl https://get.acme.sh | sh
 source ~/.bashrc
-cd .acme.sh
-bash acme.sh --issue -d $domain --server letsencrypt --keylength ec-256 --fullchain-file /usr/local/etc/xray/fullchain.crt --key-file /usr/local/etc/xray/private.key --standalone --force
+bash .acme.sh/acme.sh  --register-account  -m $(echo $RANDOM | md5sum | head -c 6; echo;)@gmail.com --server zerossl
+bash .acme.sh/acme.sh --issue -d $domain --server zerossl --keylength ec-256 --fullchain-file /usr/local/etc/xray/fullchain.crt --key-file /usr/local/etc/xray/private.key --standalone --force
+chmod 745 /usr/local/etc/xray/private.key
 clear
 echo -e "${GB}[ INFO ]${NC} ${YB}Setup Nginx & Xray Conf${NC}"
-echo "UQ3w2q98BItd3DPgyctdoJw4cqQFmY59ppiDQdqMKbw=" > /usr/local/etc/xray/serverpsk
-wget -q -O /usr/local/etc/xray/config.json https://raw.githubusercontent.com/dugong-lewat/dugong-lewat/other/config.json
-wget -q -O /etc/nginx/nginx.conf https://raw.githubusercontent.com/dugong-lewat/dugong-lewat/other/nginx.conf
-wget -q -O /etc/nginx/conf.d/xray.conf https://raw.githubusercontent.com/dugong-lewat/dugong-lewat/other/xray.conf
+uuid=$(cat /proc/sys/kernel/random/uuid)
+pwtr=$(openssl rand -hex 4)
+cat > /usr/local/etc/xray/config.json << END
+{
+  "api": {
+    "services": [
+      "HandlerService",
+      "LoggerService",
+      "StatsService"
+    ],
+    "tag": "api"
+  },
+  "dns": {
+    "queryStrategy": "UseIP",
+    "servers": [
+      {
+        "address": "localhost",
+        "domains": [
+          "https://1.1.1.1/dns-query"
+        ],
+        "queryStrategy": "UseIP"
+      }
+    ],
+    "tag": "dns_inbound"
+  },
+  "inbounds": [
+    {
+      "listen": "127.0.0.1",
+      "port": 62789,
+      "protocol": "dokodemo-door",
+      "settings": {
+        "address": "127.0.0.1"
+      },
+      "tag": "api"
+    },
+# XTLS
+    {
+      "listen": "::",
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "flow": "xtls-rprx-vision",
+            "id": "$uuid"
+#vless-xtls
+          }
+        ],
+        "decryption": "none",
+        "fallbacks": [
+          {
+            "alpn": "h2",
+            "dest": 2323,
+            "xver": 2
+          },
+          {
+            "dest": 800,
+            "xver": 2
+          },
+          {
+            "path": "/vless",
+            "dest": "@vless-ws",
+            "xver": 2
+          },
+          {
+            "path": "/vmess",
+            "dest": "@vmess-ws",
+            "xver": 2
+          },
+          {
+            "path": "/trojan",
+            "dest": "@trojan-ws",
+            "xver": 2
+          },
+          {
+            "path": "/vless-hup",
+            "dest": "@vl-hup",
+            "xver": 2
+          },
+          {
+            "path": "/vmess-hup",
+            "dest": "@vm-hup",
+            "xver": 2
+          },
+          {
+            "path": "/trojan-hup",
+            "dest": "@tr-hup",
+            "xver": 2
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "tls",
+        "tlsSettings": {
+          "certificates": [
+            {
+              "ocspStapling": 3600,
+              "certificateFile": "/usr/local/etc/xray/fullchain.crt",
+              "keyFile": "/usr/local/etc/xray/private.key"
+            }
+          ],
+          "minVersion": "1.2",
+          "cipherSuites": "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+          "alpn": [
+            "h2",
+            "http/1.1"
+          ]
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      }
+    },
+# TROJAN TCP TLS
+    {
+      "port": 2323,
+      "listen": "127.0.0.1",
+      "protocol": "trojan",
+      "settings": {
+        "clients": [
+          {
+            "password": "$pwtr",
+            "level": 0
+#trojan-tcp
+          }
+        ],
+        "fallbacks": [
+          {
+            "dest": "844",
+            "xver": 2
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "none",
+        "tcpSettings": {
+          "acceptProxyProtocol": true
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      }
+    },
+# VLESS WS
+    {
+      "listen": "@vless-ws",
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "email":"general@vless-ws",
+            "id": "$uuid"
+#vless
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "acceptProxyProtocol": true,
+          "path": "/vless"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      }
+    },
+# VLESS HUP
+    {
+      "listen": "@vl-hup",
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "email":"general@vless-ws",
+            "id": "$uuid"
+#vless
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "httpupgrade",
+        "security": "none",
+        "httpupgradeSettings": {
+          "acceptProxyProtocol": true,
+          "path": "/vless-hup"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      }
+    },
+# VMESS WS
+    {
+      "listen": "@vmess-ws",
+      "protocol": "vmess",
+      "settings": {
+        "clients": [
+          {
+            "email": "general@vmess-ws", 
+            "id": "$uuid",
+            "level": 0
+#vmess
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "acceptProxyProtocol": true,
+          "path": "/vmess"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      }
+    },
+# VMESS HUP
+    {
+      "listen": "@vm-hup",
+      "protocol": "vmess",
+      "settings": {
+        "clients": [
+          {
+            "email": "general@vmess-ws", 
+            "id": "$uuid",
+            "level": 0
+#vmess
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "httpupgrade",
+        "security": "none",
+        "httpupgradeSettings": {
+          "acceptProxyProtocol": true,
+          "path": "/vmess-hup"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      }
+    },
+# TROJAN WS
+    {
+      "listen": "@trojan-ws",
+      "protocol": "trojan",
+      "settings": {
+        "clients": [
+          {
+            "password": "$pwtr",
+            "level": 0
+#trojan
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "acceptProxyProtocol": true,
+          "path": "/trojan"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      }
+    },
+# TROJAN HUP
+    {
+      "listen": "@tr-hup",
+      "protocol": "trojan",
+      "settings": {
+        "clients": [
+          {
+            "password": "$pwtr",
+            "level": 0
+#trojan
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "httpupgrade",
+        "security": "none",
+        "httpupgradeSettings": {
+          "acceptProxyProtocol": true,
+          "path": "/trojan-hup"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      }
+    },
+    {
+      "port": 80,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "$uuid"
+#universal
+          }
+        ],
+        "fallbacks": [
+          {
+            "dest": 800,
+            "xver": 2
+          },
+          {
+            "path": "/vless",
+            "dest": "@vless-ws",
+            "xver": 2
+          },
+          {
+            "path": "/vmess",
+            "dest": "@vmess-ws",
+            "xver": 2
+          },
+          {
+            "path": "/trojan",
+            "dest": "@trojan",
+            "xver": 2
+          }
+        ],
+        "decryption": "none"
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      }
+    },
+# TROJAN WS
+    {
+      "listen": "@trojan",
+      "protocol": "trojan",
+      "settings": {
+        "clients": [
+          {
+            "password": "$pwtr",
+            "level": 0
+#trojan
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "acceptProxyProtocol": true,
+          "path": "/trojan"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      }
+    }
+  ],
+  "log": {
+    "access": "/var/log/xray/access.log",
+    "error": "/var/log/xray/error.log",
+    "loglevel": "info"
+  },
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "settings": {
+        "domainStrategy": "UseIP"
+      },
+      "tag": "direct"
+    },
+    {
+      "protocol": "blackhole",
+      "settings": {},
+      "tag": "blocked"
+    },
+    {
+      "protocol": "wireguard",
+      "settings": {
+        "address": [
+          "172.16.0.2",
+          "2606:4700:110:80ef:64ab:30a8:7451:9dd7"
+        ],
+        "domainStrategy": "ForceIP",
+        "kernelMode": false,
+        "mtu": 1420,
+        "peers": [
+          {
+            "allowedIPs": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "endpoint": "engage.cloudflareclient.com:2408",
+            "keepAlive": 0,
+            "publicKey": "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo="
+          }
+        ],
+        "secretKey": "sLnPZ0qDC20mpmZf+JxHRiuaWFT2QmIum7FsaRIemVk=",
+        "workers": 2
+      },
+      "tag": "warp"
+    }
+  ],
+  "policy": {
+    "levels": {
+      "0": {
+        "statsUserDownlink": true,
+        "statsUserUplink": true
+      }
+    },
+    "system": {
+      "statsInboundDownlink": true,
+      "statsInboundUplink": true,
+      "statsOutboundDownlink": true,
+      "statsOutboundUplink": true
+    }
+  },
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "inboundTag": [
+          "api"
+        ],
+        "outboundTag": "api",
+        "type": "field"
+      },
+      {
+        "ip": [
+          "geoip:private"
+        ],
+        "outboundTag": "blocked",
+        "type": "field"
+      },
+      {
+        "outboundTag": "blocked",
+        "protocol": [
+          "bittorrent"
+        ],
+        "type": "field"
+      },
+      {
+        "domain": [
+          "geosite:google",
+          "geosite:netflix"
+        ],
+        "outboundTag": "warp",
+        "type": "field"
+      }
+    ]
+  },
+  "stats": {}
+}
+END
+cat > /etc/nginx/nginx.conf << END
+# Generated by nginxconfig.io
+user www-data;
+pid /run/nginx.pid;
+worker_processes auto;
+worker_rlimit_nofile 65535;
+
+events {
+   multi_accept on;
+   worker_connections 65535;
+}
+
+http {
+   charset utf-8;
+   sendfile on;
+   tcp_nopush on;
+   tcp_nodelay on;
+   server_tokens off;
+   types_hash_max_size 2048;
+   server_names_hash_bucket_size 128;
+   server_names_hash_max_size 512;
+   client_max_body_size 16M;
+
+   # MIME
+   include mime.types;
+   default_type application/octet-stream;
+
+   # logging
+   access_log /var/log/nginx/access.log;
+   error_log /var/log/nginx/error.log warn;
+
+   # Compression
+   gzip on;
+   gzip_comp_level 5;
+   gzip_min_length 256;
+   gzip_proxied any;
+   gzip_types application/javascript application/json application/xml text/css text/plain text/xml application/xml+rss;
+
+   include /etc/nginx/conf.d/*.conf;
+   include /etc/nginx/sites-enabled/*;
+
+   server {
+       listen 800 proxy_protocol default_server;
+       listen 844 http2 proxy_protocol default_server;
+       set_real_ip_from 127.0.0.1;
+       real_ip_header proxy_protocol;
+       server_name _;
+       return 400;
+   }
+   server {
+       listen 844 http2;
+       set_real_ip_from 127.0.0.1;
+       real_ip_header proxy_protocol;
+       server_name $domain;
+
+       # Web Content
+       location / {
+         root /var/www/html;
+       }
+   }
+}
+END
+# wget -q -O /etc/nginx/conf.d/grpc.conf https://raw.githubusercontent.com/dugong-lewat/autoscript2/main/config/grpc.conf
+
+# wget -q -O /etc/nginx/nginx.conf https://raw.githubusercontent.com/dugong-lewat/autoscript2/main/config/nginx.conf
+# sudo sed -i -e 's/example.com/${domain}/g' /etc/nginx/conf.d/xray.conf
 systemctl restart nginx
 systemctl restart xray
 echo -e "${GB}[ INFO ]${NC} ${YB}Setup Done${NC}"
-sleep 2
+sleep 1
 clear
-iptables -A FORWARD -m string --string "get_peers" --algo bm -j DROP
-iptables -A FORWARD -m string --string "announce_peer" --algo bm -j DROP
-iptables -A FORWARD -m string --string "find_node" --algo bm -j DROP
-iptables -A FORWARD -m string --algo bm --string "BitTorrent" -j DROP
-iptables -A FORWARD -m string --algo bm --string "BitTorrent protocol" -j DROP
-iptables -A FORWARD -m string --algo bm --string "peer_id=" -j DROP
-iptables -A FORWARD -m string --algo bm --string ".torrent" -j DROP
-iptables -A FORWARD -m string --algo bm --string "announce.php?passkey=" -j DROP
-iptables -A FORWARD -m string --algo bm --string "torrent" -j DROP
-iptables -A FORWARD -m string --algo bm --string "announce" -j DROP
-iptables -A FORWARD -m string --algo bm --string "info_hash" -j DROP
-iptables-save > /etc/iptables.up.rules
-iptables-restore -t < /etc/iptables.up.rules
-netfilter-persistent save
-netfilter-persistent reload
+# Blokir lalu lintas torrent (BitTorrent)
+sudo iptables -A INPUT -p udp --dport 6881:6889 -j DROP
+sudo iptables -A INPUT -p tcp --dport 6881:6889 -j DROP
+# Blokir lalu lintas torrent dengan modul string
+sudo iptables -A INPUT -p tcp --dport 6881:6889 -m string --algo bm --string "BitTorrent" -j DROP
+sudo iptables -A INPUT -p udp --dport 6881:6889 -m string --algo bm --string "BitTorrent" -j DROP
 cd /usr/bin
-GITHUB=raw.githubusercontent.com/flashcharge99/nana/main
+GITHUB=raw.githubusercontent.com/flashcharge99/test/main
 echo -e "${GB}[ INFO ]${NC} ${YB}Downloading Main Menu${NC}"
-wget -q -O menu "https://raw.githubusercontent.com/flashcharge99/nana/main/menu/menu.sh"
-wget -q -O vmess "https://raw.githubusercontent.com/flashcharge99/nana/main/menu/vmess.sh"
-wget -q -O vless "https://raw.githubusercontent.com/flashcharge99/nana/main/menu/vless.sh"
-wget -q -O trojan "https://raw.githubusercontent.com/flashcharge99/nana/main/menu/trojan.sh"
-wget -q -O shadowsocks "https://raw.githubusercontent.com/flashcharge99/nana/main/menu/shadowsocks.sh"
-wget -q -O shadowsocks2022 "https://raw.githubusercontent.com/flashcharge99/nana/main/menu/shadowsocks2022.sh"
-wget -q -O socks "https://raw.githubusercontent.com/flashcharge99/nana/main/menu/socks.sh"
-wget -q -O allxray "https://raw.githubusercontent.com/flashcharge99/nana/main/menu/allxray.sh"
+wget -q -O menu "https://${GITHUB}/menu/menu.sh"
+wget -q -O allxray "https://${GITHUB}/menu/allxray.sh"
 sleep 0.5
-echo -e "${GB}[ INFO ]${NC} ${YB}Downloading Menu Vmess${NC}"
-wget -q -O add-vmess "https://raw.githubusercontent.com/flashcharge99/nana/main/vmess/add-vmess.sh"
-wget -q -O del-vmess "https://raw.githubusercontent.com/flashcharge99/nana/main/vmess/del-vmess.sh"
-wget -q -O extend-vmess "https://raw.githubusercontent.com/flashcharge99/nana/main/vmess/extend-vmess.sh"
-wget -q -O trialvmess "https://raw.githubusercontent.com/flashcharge99/nana/main/vmess/trialvmess.sh"
-wget -q -O cek-vmess "https://raw.githubusercontent.com/flashcharge99/nana/main/vmess/cek-vmess.sh"
-sleep 0.5
-echo -e "${GB}[ INFO ]${NC} ${YB}Downloading Menu Vless${NC}"
-wget -q -O add-vless "https://raw.githubusercontent.com/flashcharge99/nana/main/vless/add-vless.sh"
-wget -q -O del-vless "https://raw.githubusercontent.com/flashcharge99/nana/main/vless/del-vless.sh"
-wget -q -O extend-vless "https://raw.githubusercontent.com/flashcharge99/nana/main/vless/extend-vless.sh"
-wget -q -O trialvless "https://raw.githubusercontent.com/flashcharge99/nana/main/vless/trialvless.sh"
-wget -q -O cek-vless "https://raw.githubusercontent.com/flashcharge99/nana/main/vless/cek-vless.sh"
-sleep 0.5
-echo -e "${GB}[ INFO ]${NC} ${YB}Downloading Menu Trojan${NC}"
-wget -q -O add-trojan "https://raw.githubusercontent.com/flashcharge99/nana/main/trojan/add-trojan.sh"
-wget -q -O del-trojan "https://raw.githubusercontent.com/flashcharge99/nana/main/trojan/del-trojan.sh"
-wget -q -O extend-trojan "https://raw.githubusercontent.com/flashcharge99/nana/main/trojan/extend-trojan.sh"
-wget -q -O trialtrojan "https://raw.githubusercontent.com/flashcharge99/nana/main/trojan/trialtrojan.sh"
-wget -q -O cek-trojan "https://raw.githubusercontent.com/flashcharge99/nana/main/trojan/cek-trojan.sh"
-sleep 0.5
-echo -e "${GB}[ INFO ]${NC} ${YB}Downloading Menu Shadowsocks${NC}"
-wget -q -O add-ss "https://raw.githubusercontent.com/flashcharge99/nana/main/shadowsocks/add-ss.sh"
-wget -q -O del-ss "https://raw.githubusercontent.com/flashcharge99/nana/main/shadowsocks/del-ss.sh"
-wget -q -O extend-ss "https://raw.githubusercontent.com/flashcharge99/nana/main/shadowsocks/extend-ss.sh"
-wget -q -O trialss "https://raw.githubusercontent.com/flashcharge99/nana/main/shadowsocks/trialss.sh"
-wget -q -O cek-ss "https://raw.githubusercontent.com/flashcharge99/nana/main/shadowsocks/cek-ss.sh"
-sleep 0.5
-echo -e "${GB}[ INFO ]${NC} ${YB}Downloading Menu Shadowsocks 2022${NC}"
-wget -q -O add-ss2022 "https://raw.githubusercontent.com/flashcharge99/nana/main/shadowsocks2022/add-ss2022.sh"
-wget -q -O del-ss2022 "https://raw.githubusercontent.com/flashcharge99/nana/main/shadowsocks2022/del-ss2022.sh"
-wget -q -O extend-ss2022 "https://raw.githubusercontent.com/flashcharge99/nana/main/shadowsocks2022/extend-ss2022.sh"
-wget -q -O trialss2022 "https://raw.githubusercontent.com/flashcharge99/nana/main/shadowsocks2022/trialss2022.sh"
-wget -q -O cek-ss2022 "https://raw.githubusercontent.com/flashcharge99/nana/main/shadowsocks2022/cek-ss2022.sh"
-sleep 0.5
-echo -e "${GB}[ INFO ]${NC} ${YB}Downloading Menu Socks5${NC}"
-wget -q -O add-socks "https://raw.githubusercontent.com/flashcharge99/nana/main/socks/add-socks.sh"
-wget -q -O del-socks "https://raw.githubusercontent.com/flashcharge99/nana/main/socks/del-socks.sh"
-wget -q -O extend-socks "https://raw.githubusercontent.com/flashcharge99/nana/main/socks/extend-socks.sh"
-wget -q -O trialsocks "https://raw.githubusercontent.com/flashcharge99/nana/main/socks/trialsocks.sh"
-wget -q -O cek-socks "https://raw.githubusercontent.com/flashcharge99/nana/main/socks/cek-socks.sh"
-sleep 0.5
+
 echo -e "${GB}[ INFO ]${NC} ${YB}Downloading Menu All Xray${NC}"
-wget -q -O add-xray "https://raw.githubusercontent.com/flashcharge99/nana/main/allxray/add-xray.sh"
-wget -q -O del-xray "https://raw.githubusercontent.com/flashcharge99/nana/main/allxray/del-xray.sh"
-wget -q -O extend-xray "https://raw.githubusercontent.com/flashcharge99/nana/main/allxray/extend-xray.sh"
-wget -q -O trialxray "https://raw.githubusercontent.com/flashcharge99/nana/main/allxray/trialxray.sh"
-wget -q -O cek-xray "https://raw.githubusercontent.com/flashcharge99/nana/main/allxray/cek-xray.sh"
+wget -q -O add-xray "https://${GITHUB}/allxray/add-xray.sh"
+wget -q -O del-xray "https://${GITHUB}/allxray/del-xray.sh"
+wget -q -O extend-xray "https://${GITHUB}/allxray/extend-xray.sh"
+wget -q -O trialxray "https://${GITHUB}/allxray/trialxray.sh"
+wget -q -O cek-xray "https://${GITHUB}/allxray/cek-xray.sh"
 sleep 0.5
+
 echo -e "${GB}[ INFO ]${NC} ${YB}Downloading Menu Log${NC}"
-wget -q -O log-create "https://raw.githubusercontent.com/flashcharge99/nana/main/log/log-create.sh"
-wget -q -O log-vmess "https://raw.githubusercontent.com/flashcharge99/nana/main/log/log-vmess.sh"
-wget -q -O log-vless "https://raw.githubusercontent.com/flashcharge99/nana/main/log/log-vless.sh"
-wget -q -O log-trojan "https://raw.githubusercontent.com/flashcharge99/nana/main/log/log-trojan.sh"
-wget -q -O log-ss "https://raw.githubusercontent.com/flashcharge99/nana/main/log/log-ss.sh"
-wget -q -O log-ss2022 "https://raw.githubusercontent.com/flashcharge99/nana/main/log/log-ss2022.sh"
-wget -q -O log-socks "https://raw.githubusercontent.com/flashcharge99/nana/main/log/log-socks.sh"
-wget -q -O log-allxray "https://raw.githubusercontent.com/flashcharge99/nana/main/log/log-allxray.sh"
+wget -q -O log-create "https://${GITHUB}/log/log-create.sh"
+wget -q -O log-allxray "https://${GITHUB}/log/log-allxray.sh"
 sleep 0.5
+
 echo -e "${GB}[ INFO ]${NC} ${YB}Downloading Other Menu${NC}"
-wget -q -O xp "https://raw.githubusercontent.com/flashcharge99/nana/main/other/xp.sh"
-wget -q -O dns "https://raw.githubusercontent.com/flashcharge99/nana/main/other/dns.sh"
-wget -q -O certxray "https://raw.githubusercontent.com/flashcharge99/nana/main/other/certxray.sh"
-wget -q -O xraymod "https://raw.githubusercontent.com/flashcharge99/nana/main/other/xraymod.sh"
-wget -q -O xrayofficial "https://raw.githubusercontent.com/flashcharge99/nana/main/other/xrayofficial.sh"
-wget -q -O about "https://raw.githubusercontent.com/flashcharge99/nana/main/other/about.sh"
-wget -q -O clear-log "https://raw.githubusercontent.com/flashcharge99/nana/main/other/clear-log.sh"
-wget -q -O changer "https://raw.githubusercontent.com/flashcharge99/nana/main/other/changer.sh"
+wget -q -O xp "https://${GITHUB}/other/xp.sh"
+wget -q -O dns "https://${GITHUB}/other/dns.sh"
+wget -q -O certxray "https://${GITHUB}/other/certxray.sh"
+wget -q -O about "https://${GITHUB}/other/about.sh"
+wget -q -O clear-log "https://${GITHUB}/other/clear-log.sh"
+wget -q -O changer "https://${GITHUB}/other/changer.sh"
 echo -e "${GB}[ INFO ]${NC} ${YB}Download All Menu Done${NC}"
 sleep 2
-chmod +x add-vmess
-chmod +x del-vmess
-chmod +x extend-vmess
-chmod +x trialvmess
-chmod +x cek-vmess
-chmod +x add-vless
-chmod +x del-vless
-chmod +x extend-vless
-chmod +x trialvless
-chmod +x cek-vless
-chmod +x add-trojan
-chmod +x del-trojan
-chmod +x extend-trojan
-chmod +x trialtrojan
-chmod +x cek-trojan
-chmod +x add-ss
-chmod +x del-ss
-chmod +x extend-ss
-chmod +x trialss
-chmod +x cek-ss
-chmod +x add-ss2022
-chmod +x del-ss2022
-chmod +x extend-ss2022
-chmod +x trialss2022
-chmod +x cek-ss2022
-chmod +x add-socks
-chmod +x del-socks
-chmod +x extend-socks
-chmod +x trialsocks
-chmod +x cek-socks
 chmod +x add-xray
 chmod +x del-xray
 chmod +x extend-xray
 chmod +x trialxray
 chmod +x cek-xray
+
 chmod +x log-create
-chmod +x log-vmess
-chmod +x log-vless
-chmod +x log-trojan
-chmod +x log-ss
-chmod +x log-ss2022
-chmod +x log-socks
 chmod +x log-allxray
+
 chmod +x menu
-chmod +x vmess
-chmod +x vless
-chmod +x trojan
-chmod +x shadowsocks
-chmod +x shadowsocks2022
-chmod +x socks
 chmod +x allxray
+
 chmod +x xp
 chmod +x dns
 chmod +x certxray
-chmod +x xraymod
-chmod +x xrayofficial
 chmod +x about
 chmod +x clear-log
 chmod +x changer
@@ -279,23 +726,22 @@ END
 chmod 644 /root/.profile
 clear
 echo ""
-echo ""
 echo -e "${BB}—————————————————————————————————————————————————————————${NC}"
-echo -e "                  ${WB}MINI SCRIPT BY DUGONG${NC}"
+echo -e "                  ${WB}XRAY SCRIPT BY DUGONG${NC}"
 echo -e "${BB}—————————————————————————————————————————————————————————${NC}"
-echo -e "  ${WB}»»» Protocol Service «««  |  »»» Network Protocol «««${NC}  "
+echo -e "                 ${WB}»»» Protocol Service «««${NC}  "
 echo -e "${BB}—————————————————————————————————————————————————————————${NC}"
-echo -e "  ${YB}- Vless${NC}                   ${WB}|${NC}  ${YB}- Websocket (CDN) non TLS${NC}"
-echo -e "  ${YB}- Vmess${NC}                   ${WB}|${NC}  ${YB}- Websocket (CDN) TLS${NC}"
-echo -e "  ${YB}- Trojan${NC}                  ${WB}|${NC}  ${YB}- gRPC (CDN) TLS${NC}"
-echo -e "  ${YB}- Socks5${NC}                  ${WB}|${NC}"
-echo -e "  ${YB}- Shadowsocks${NC}             ${WB}|${NC}"
-echo -e "  ${YB}- Shadowsocks 2022${NC}        ${WB}|${NC}"
-echo -e "${BB}————————————————————————————————————————————————————————${NC}"
-echo -e "               ${WB}»»» Network Port Service «««${NC}             "
-echo -e "${BB}————————————————————————————————————————————————————————${NC}"
-echo -e "  ${YB}- HTTPS : 443, 2053, 2083, 2087, 2096, 8443${NC}"
-echo -e "  ${YB}- HTTP  : 80, 8080, 8880, 2052, 2082, 2086, 2095${NC}"
+echo -e "  ${YB}- Vmess WS TLS${NC}         : ${YB}443${NC}"
+echo -e "  ${YB}- Vmess WS nTLS${NC}        : ${YB}80${NC}"
+echo -e "  ${YB}- Vmess HTTPupgrade${NC}    : ${YB}443${NC}"
+echo -e "  ${YB}- Vless XTLS Vision${NC}    : ${YB}443${NC}"
+echo -e "  ${YB}- Vless WS TLS${NC}         : ${YB}443${NC}"
+echo -e "  ${YB}- Vless WS nTLS${NC}        : ${YB}80${NC}"
+echo -e "  ${YB}- Vless HTTPupgrade${NC}    : ${YB}443${NC}"
+echo -e "  ${YB}- Trojan TCP TLS${NC}       : ${YB}443${NC}"
+echo -e "  ${YB}- Trojan WS TLS${NC}        : ${YB}443${NC}"
+echo -e "  ${YB}- Trojan WS nTLS${NC}       : ${YB}80${NC}"
+echo -e "  ${YB}- Trojan HTTPupgrade${NC}   : ${YB}443${NC}"
 echo -e "${BB}————————————————————————————————————————————————————————${NC}"
 echo ""
 rm -f xray
